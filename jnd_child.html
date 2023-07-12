@@ -1,0 +1,190 @@
+<!DOCTYPE HTML>
+<HTML>
+<HEAD>
+<meta HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=utf-8">
+<style type="text/css">
+*
+{
+background-color:Black;
+color:DarkGray;
+}
+input:disabled
+{
+background-color:DarkGray;
+color:Black;
+}
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0px;
+  border: 0;
+  overflow: hidden; /*  Disable scrollbars */
+  display: block;  /* No floating content on sides */
+}
+</style>
+</HEAD>
+<BODY onLoad="opener.start_interacting();">
+<canvas id='myCanvas' width=100 height=100 style="border:0px; background:black;">
+This text is displayed if your browser does not support HTML5 Canvas.
+</canvas>
+</BODY>
+<SCRIPT LANGUAGE="JavaScript">
+<!-- Beginning of JavaScript -
+//initial values
+var canvas = null;
+var ctx = null;
+var canvasData = null;
+
+const patchSize = 180;
+const bgSize = 670;
+
+var x0 = 100;
+var y0 = 100;
+
+function Patch() {
+   this.x = x0;
+   this.y = y0;
+   this.r = 100;
+   this.g = 100;
+   this.b = 100;
+   this.imageData;
+}
+
+var bg_p = new Patch();
+var ref_p = new Patch();
+var test_p = new Patch();
+
+var mode = 0; // mode=0 -- sctrict substitution; mode=1 -- two semifields
+var phase = 0; //=0 - draw ref_p; =1 - draw test_p
+
+var interval = 1500 //=1.5 sec
+var interval_id = null;
+
+var isFullScreen = false;
+
+//###########################################################
+function requestFullScreen(element) {
+  if(element.requestFullscreen) {
+    element.requestFullscreen();
+  } else if(element.webkitrequestFullscreen) {
+    element.webkitRequestFullscreen();
+  } else if(element.mozRequestFullscreen) {
+    element.mozRequestFullScreen();
+  }
+  isFullScreen = true;
+}
+//###########################################################
+function setup() {
+	canvas = document.getElementById('myCanvas');
+	ctx = canvas.getContext('2d');
+    bg_p.imageData = ctx.createImageData(bgSize, bgSize);
+    ref_p.imageData = ctx.createImageData(patchSize, patchSize);
+	test_p.imageData = ctx.createImageData(patchSize, patchSize);
+    window.addEventListener('resize', resizeCanvas, false);
+    resizeCanvas();
+    canvas.addEventListener('click', onMouseClick);
+    interval_id = setInterval(function(){drawPatches()}, interval);
+}
+//###########################################################
+function onMouseClick(e) {
+  if (!isFullScreen) {
+    requestFullScreen(canvas);
+  }
+}
+//###########################################################
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+	canvas.height = window.innerHeight;
+    canvasData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+	x0 = Math.round((canvas.width - bgSize) * 0.5);
+	y0 = Math.round((canvas.height - bgSize) * 0.5);
+    bg_p.x0 = x0;
+    bg_p.y0 = y0;
+	x0 = Math.round((canvas.width - patchSize) * 0.5);
+	y0 = Math.round((canvas.height - patchSize) * 0.5);
+    ref_p.x0 = x0;
+    ref_p.y0 = y0;
+    test_p.x0 = x0;
+    test_p.y0 = y0;
+    drawBgPatch();
+    drawPatches();
+}
+//###########################################################
+function setPixelColor(imageData, x, y, r, g, b) {
+    let index = (x + y * imageData.width) * 4;
+    imageData.data[index+0] = r;
+    imageData.data[index+1] = g;
+    imageData.data[index+2] = b;
+    imageData.data[index+3] = 255;
+}
+//###########################################################
+function setPatchColor(patch) {
+  var patchImageData = patch.imageData;
+  var r = patch.r;
+  var g = patch.g;
+  var b = patch.b;
+  var r4 = Math.floor(r/4);
+  var g4 = Math.floor(g/4);
+  var b4 = Math.floor(b/4);
+  var red = [r4, r4, r4, r4];
+  var green = [g4, g4, g4, g4];
+  var blue = [b4, b4, b4, b4];
+
+  for (let i=0; i < r%4; i++) {
+     red[i] += 1;
+  }  
+  for (let i=0; i < g%4; i++) {
+     green[i] += 1;
+  }  
+  for (let i=0; i < b%4; i++) {
+     blue[i] += 1;
+  }  
+
+  for (let x=0; x < patchImageData.width; x++) 
+	for (let y=0; y < patchImageData.height; y++) {
+      if (x%2==0 && y%2==0) setPixelColor(patchImageData, x, y, red[0], green[0], blue[0]);
+      if (x%2==1 && y%2==0) setPixelColor(patchImageData, x, y, red[1], green[1], blue[1]);
+      if (x%2==0 && y%2==1) setPixelColor(patchImageData, x, y, red[2], green[2], blue[2]);
+      if (x%2==1 && y%2==1) setPixelColor(patchImageData, x, y, red[3], green[3], blue[3]);
+  }
+}
+//###########################################################
+function drawBgPatch() {
+    //Yxy=26.0; 0.299; 0.309 - measured for 1964_10
+    //JND RGB=
+    bg_p.r = 461;
+    bg_p.g = 459;
+    bg_p.b = 426;
+    //Yxy=24.0; 0.298; 0.308 - measured for 1931_2
+    //JND RGB=
+    //bg_p.r = 459;
+    //bg_p.g = 453;
+    //bg_p.b = 417;
+    setPatchColor(bg_p);
+    ctx.putImageData(bg_p.imageData, bg_p.x0, bg_p.y0);
+}
+//###########################################################
+function drawPatches() {
+  let p;
+  drawBgPatch;
+  if (mode == 0) { //strict substitution
+    if (phase == 0) p = ref_p;
+    else            p = test_p;
+    setPatchColor(p);
+    ctx.putImageData(p.imageData, p.x0, p.y0);
+    phase = 1 - phase;
+  } else { // semifields
+    p = ref_p;
+    setPatchColor(p);
+    ctx.putImageData(p.imageData, p.x0, p.y0, 0, 0, 0.5*patchSize, patchSize);
+
+    p = test_p;
+    setPatchColor(p);
+    ctx.putImageData(p.imageData, p.x0 + 0.5*patchSize, p.y0, 0, 0, 0.5*patchSize, patchSize);
+  }
+}
+//###########################################################
+// - End of JavaScript - -->
+</SCRIPT>
+</HTML>
+

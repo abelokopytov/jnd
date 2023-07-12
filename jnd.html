@@ -1,0 +1,544 @@
+<!DOCTYPE HTML>
+<HTML>
+<HEAD>
+<meta HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=utf-8">
+<style type="text/css">
+*
+{
+  background-color:Black;
+  color:DarkGray;
+}
+input {
+  font-size:18px;
+}
+</style>
+</HEAD>
+<BODY>
+<br>
+<form name="myForm" action="" method="GET" id='myForm'>
+<div id="observer_wrapper">
+Observer<label><input type="radio" id="1931_2" name="observer"/>1931_2</label>
+        <label><input type="radio" id="1964_10" name="observer" checked/>1964_10</label><br>
+</div>
+<br>
+<div id="mode_wrapper">
+Mode<label><input type="radio" id="mode_ss" name="mode" checked value="0"/>Strict Substition</label>
+    <label><input type="radio" id="mode_sf" name="mode" value="1"/>Semifields</label><br>
+</div>
+<br>
+<table cellspacing="5" style="width:50%;height:50%;">
+<tr>
+<td valign="top" style="width:220px; border:1px solid gray">
+Reference<br>
+<div id="ref_wrapper">
+x=<input style="font-size:18px;" type="number" step="0.001" size=7 min="0" max="1" id="ref_x" name="ref_x" value="0.33"
+   onkeypress="return (event.charCode >= 48 && event.charCode <= 57) || event.charCode == 44 || event.charCode == 0"/><br>
+y=<input style="font-size:18px;" type="number" step="0.001" size=7 min="0" max="1" id="ref_y" name="ref_y" value="0.33"
+   onkeypress="return (event.charCode >= 48 && event.charCode <= 57) || event.charCode == 44 || event.charCode == 0" /><br>
+Y=<input style="font-size:18px;" type="number" step="0.1" size=7 min="0" max="100" id="ref_Y" name="ref_Y" value="15.0"
+   onkeypress="return (event.charCode >= 48 && event.charCode <= 57) || event.charCode == 44 || event.charCode == 0" /><br>
+</div>
+<br>
+r=<input type="text" size=4 id="ref_r" value="0" readonly="true"/><br>
+g=<input type="text" size=4 id="ref_g" value="0" readonly="true"/><br>
+b=<input type="text" size=4 id="ref_b" value="0" readonly="true"/><br>
+
+Primary:  <button onclick="setPrimary('R')">Red</button> 
+          <button onclick="setPrimary('G')">Green</button> 
+          <button onclick="setPrimary('B')">Blue</button> 
+</td>
+<td valign="top" style="width:220px; border:1px solid gray">
+Test<br>
+x=<input type="text" size=5 name="test_x" id="test_x" value="0.33" readonly="true"/><br>
+y=<input type="text" size=5 name="test_y" id="test_y" value="0.33" readonly="true"/><br>
+Y=<input type="text" size=5 name="test_Y" id="test_Y" value="20.0" readonly="true"/><br>
+<br>
+r=<input type="text" size=4 id="test_r" value="0" readonly="true"/><br>
+g=<input type="text" size=4 id="test_g" value="0" readonly="true"/><br>
+b=<input type="text" size=4 id="test_b" value="0" readonly="true"/><br>
+<br>
+phi=<input type="text" size=3 id="test_phi" value="45" readonly="true"/><br>
+dr=<input type="text" size=5 id="test_dr" value="0.01" readonly="true"/><br>
+</td>
+</tr>
+<tr>
+<td colspan=2>Msg=<input type="text" size=30 id="msg" value="" readonly="true"/></td>
+</tr>
+</table>
+</form>
+</BODY>
+<SCRIPT LANGUAGE="JavaScript">
+<!-- Beginning of JavaScript -
+//initial values
+var lineWidth = 1;
+var canvas = null;
+var ctx = null;
+var canvasWidth = 0;
+var canvasHeight = 0;
+var canvasData = null;
+
+var cw = null; //child window
+var timerId = null;
+var childIsReady = false;
+
+const maxValue =  1023; //10-bit resolution
+
+var topY = 0.0;
+
+function Stimulus() {
+   this.x = 0.299; //CAD background 1964_10
+   this.y = 0.309; //CAD background 1964_10
+   this.Y = 26.0; //CAD background 1964_10
+   this.r;
+   this.g;
+   this.b;
+}
+
+var ref_s = new Stimulus();
+var test_s = new Stimulus();
+var temp_s = new Stimulus();
+var test_phi = 0;
+var test_dr = 0;
+var drStep = 0.001;
+
+function Primary (valueRed, valueGreen, valueBlue, x, y, Y) {
+  this.valueRed = valueRed;
+  this.valueGreen = valueGreen;
+  this.valueBlue = valueBlue;
+  this.x = x;
+  this.y = y;
+  this.Y = Y;
+};
+
+primRed   = new Primary(1, 0, 0, 0.0, 0.0, 0.0);
+primGreen = new Primary(0, 1, 0, 0.0, 0.0, 0.0);
+primBlue  = new Primary(0, 0, 1, 0.0, 0.0, 0.0);
+
+var xyStepTiny = 0.0005;
+var xyStepSmall = 0.001;
+var xyStep = xyStepSmall;
+
+var phiStep = 45;
+var drStep = 0.0005;
+
+var observer = "1964_10";
+var mode = 0; //0= Strict substitution; =1 Semifields 
+
+//matrix m[row][column]==m[RGB][XYZ]- XYZ of primaries RGB with values=1023
+var m = [
+  [0, 0, 0],
+  [0, 0, 0],
+  [0, 0, 0]
+]
+// CAD display EIZO CS2420, observer 1931_2
+const m2 = [ // m[RGB][XYZ]
+  [73.831624, 34.049377, 0.554433],
+  [28.793167, 96.442788, 6.962788],
+  [37.637111, 11.531534, 202.220880]
+];
+//const darkY = 0.21;
+// CAD display EIZO CS2420, observer 1964_10
+const m10 = [ // m[RGB][XYZ]
+  [75.415, 36.164, 0.618958],
+  [37.6269, 100.94, 5.4989],
+  [42.48720, 20.5376, 230.018]
+];
+//const darkY = 0.26;
+
+const darkY = 0.3; // for 1931_2 and 1964_10
+
+var minv = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]; //inverse matrix
+
+function Triangle() {
+  this.xR = 0; //primary R
+  this.yR = 0;
+  this.xG = 0; //primary G
+  this.yG = 0;
+  this.xB = 0; //primary B
+  this.yB = 0;
+}
+
+tr = new Triangle();
+
+//###########################################################
+function calc_primary_cie_xyY(prim) {
+  var X = 0.0;
+  var Y = 0.0;
+  var Z = 0.0;
+  var sumXYZ;
+  X = m[0][0]*prim.valueRed + m[1][0]*prim.valueGreen + m[2][0]*prim.valueBlue;
+  Y = m[0][1]*prim.valueRed + m[1][1]*prim.valueGreen + m[2][1]*prim.valueBlue;
+  Z = m[0][2]*prim.valueRed + m[1][2]*prim.valueGreen + m[2][2]*prim.valueBlue;
+  sumXYZ = X + Y + Z;
+  prim.x = X / sumXYZ;
+  prim.y = Y / sumXYZ;
+  prim.Y = Y;
+}
+//###########################################################
+function calcInverseMatrix() {
+  var det = m[0][0] * (m[1][1] * m[2][2] - m[2][1] * m[1][2]) -
+            m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) +
+            m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+  var invdet = 1.0 / det;
+  minv[0][0] = (m[1][1] * m[2][2] - m[2][1] * m[1][2]) * invdet;
+  minv[0][1] = (m[0][2] * m[2][1] - m[0][1] * m[2][2]) * invdet;
+  minv[0][2] = (m[0][1] * m[1][2] - m[0][2] * m[1][1]) * invdet;
+  minv[1][0] = (m[1][2] * m[2][0] - m[1][0] * m[2][2]) * invdet;
+  minv[1][1] = (m[0][0] * m[2][2] - m[0][2] * m[2][0]) * invdet;
+  minv[1][2] = (m[1][0] * m[0][2] - m[0][0] * m[1][2]) * invdet;
+  minv[2][0] = (m[1][0] * m[2][1] - m[2][0] * m[1][1]) * invdet;
+  minv[2][1] = (m[2][0] * m[0][1] - m[0][0] * m[2][1]) * invdet;
+  minv[2][2] = (m[0][0] * m[1][1] - m[1][0] * m[0][1]) * invdet;
+}
+//###########################################################
+function  gammaCorrection(c, linValue) {
+  let value = 0;
+  if (c == 'r') value = Math.floor(1.0046*Math.pow(linValue, 0.4542)*maxValue);
+  if (c == 'g') value = Math.floor(0.9988*Math.pow(linValue, 0.45174)*maxValue);
+  if (c == 'b') value = Math.floor(1.003*Math.pow(linValue, 0.4523)*maxValue);
+  return value;
+}    
+//###########################################################
+function cie_xyY_to_rgb(s) {
+  if (s.Y <= darkY) {
+    s.r = 0.0;
+    s.g = 0.0;
+    s.b = 0.0;
+    return;
+  }
+  var Ycorr = s.Y - darkY;
+  XYZ_X = s.x*Ycorr/s.y;
+  XYZ_Y = Ycorr;
+  XYZ_Z = (1 - s.x - s.y)*Ycorr/s.y;
+  lin_r = minv[0][0]*XYZ_X + minv[1][0]*XYZ_Y + minv[2][0]*XYZ_Z;
+  lin_g = minv[0][1]*XYZ_X + minv[1][1]*XYZ_Y + minv[2][1]*XYZ_Z;
+  lin_b = minv[0][2]*XYZ_X + minv[1][2]*XYZ_Y + minv[2][2]*XYZ_Z;
+  s.r = gammaCorrection('r', lin_r);
+  s.g = gammaCorrection('g', lin_g);
+  s.b = gammaCorrection('b', lin_b);
+  if (lin_r < 0) {
+    document.getElementById("msg").value='lin_r=' + lin_r + "; s.r=" + s.r;
+    s.r = 0;
+  }
+  if (lin_g < 0) {
+    document.getElementById("msg").value='lin_g=' + lin_g + "; s.g=" + s.g;
+    s.g = 0;
+  }
+  if (lin_b < 0) {
+    document.getElementById("msg").value='lin_b=' + lin_b + "; s.b=" + s.b;
+    s.b = 0;
+  }
+  if (s.r > maxValue) {
+    document.getElementById("msg").value='lin_r=' + lin_r + "; s.r=" + s.r;
+    s.r = maxValue;
+  }
+  if (s.g > maxValue) {
+    document.getElementById("msg").value='lin_g=' + lin_g + "; s.g=" + s.g;
+    s.g = maxValue;
+  }
+  if (lin_b > maxValue) {
+    document.getElementById("msg").value='lin_b=' + lin_b + "; s.b=" + s.b;
+    s.b = maxValue;
+  }
+}
+//###########################################################
+function setPrimary(c) {
+  if (c == 'R') {
+    ref_s.x = primRed.x.toFixed(4);
+    ref_s.y = primRed.y.toFixed(4);
+    ref_s.Y = primRed.Y.toFixed(1);
+  }
+  if (c == 'G') {
+    ref_s.x = primGreen.x.toFixed(4);
+    ref_s.y = primGreen.y.toFixed(4);
+    ref_s.Y = primGreen.Y.toFixed(1);
+  }
+  if (c == 'B') {
+    ref_s.x = primBlue.x.toFixed(4);
+    ref_s.y = primBlue.y.toFixed(4);
+    ref_s.Y = primBlue.Y.toFixed(1);
+  }
+  cie_xyY_to_rgb(ref_s);
+  test_s = Object.assign({}, ref_s);
+  updateRefStimulus();
+  updateTestStimulus();
+}
+//###########################################################
+function start_interacting() {
+    childIsReady = true;
+    cw.setup();
+    updateRefStimulus();
+    updateTestStimulus();
+}
+//###########################################################
+function checkChildIsReady() {
+  if (cw.document.readyState === "complete") {
+    window.clearInterval(timerId);
+    start_interacting();
+    window.focus();
+  }
+}
+//###########################################################
+const observer_wrapper_inputHandler = function(event) {
+    var elem = event.target;
+    if(elem.checked) {
+      observer = elem.id;
+      if (observer == "1931_2") m = structuredClone(m2);
+      else                      m = structuredClone(m10);
+      calcInverseMatrix();
+      calc_primary_cie_xyY(primRed);
+      calc_primary_cie_xyY(primGreen);
+      calc_primary_cie_xyY(primBlue);
+      setup_triangle();
+      cie_xyY_to_rgb(ref_s);
+      test_s = Object.assign({}, ref_s);
+      updateRefStimulus();
+      updateTestStimulus();
+      test_phi = 0;
+      test_dr = 0;
+      document.getElementById("test_phi").value = 0;
+      document.getElementById("test_dr").value = 0;
+    }
+}
+//###########################################################
+const mode_wrapper_inputHandler = function(event) {
+    var elem = event.target;
+    if(elem.checked) {
+      if (elem.id == "mode_ss") {
+        mode = 0;
+        cw.mode = 0;
+      }
+      if (elem.id == "mode_sf") {
+        mode = 1;
+        cw.mode = 1;
+      }
+    }
+}
+//###########################################################
+const ref_wrapper_inputHandler = function(event) {
+    var elem = event.target;
+    if(elem.name === "ref_x") {
+      temp_s.x = elem.valueAsNumber;
+      temp_s.y = ref_s.y;
+      if (pointInTriangle(temp_s.x, temp_s.y)) {
+        ref_s.x = temp_s.x;
+        document.getElementById("msg").value="";
+      } else {
+        elem.value = elem.defaultValue;
+        document.getElementById("msg").value="Out of triangle!";
+      }
+    }
+    if(elem.name === "ref_y") {
+      temp_s.x = ref_s.x;
+      temp_s.y = elem.valueAsNumber;
+      if (pointInTriangle(temp_s.x, temp_s.y)) {
+        ref_s.y = temp_s.y;
+        document.getElementById("msg").value="";
+      } else {
+        elem.value = elem.defaultValue;
+        document.getElementById("msg").value="Out of triangle!";
+      }
+    }
+    if(elem.name === "ref_Y") {
+      temp_s.Y = elem.valueAsNumber;
+      if (temp_s.Y < topY) {
+        document.getElementById("msg").value="";
+        ref_s.Y = temp_s.Y;
+      } else {
+        elem.value = elem.defaultValue;
+        document.getElementById("msg").value="Too bright!";
+      }
+    }
+    cie_xyY_to_rgb(ref_s);
+    test_s = Object.assign({}, ref_s);
+    updateRefStimulus();
+    updateTestStimulus();
+    test_phi = 0;
+    test_dr = 0;
+    document.getElementById("test_phi").value = 0;
+    document.getElementById("test_dr").value = 0;
+    
+}
+//#############################################################
+function drphi2xy(dr, phi, test_s) {
+  let rad = phi * Math.PI / 180.0;
+  test_s.x += dr*Math.cos(rad);
+  test_s.y += dr*Math.sin(rad);
+}
+//####################################################################
+function setup_triangle() {
+  tr.xR = primRed.x;
+  tr.yR = primRed.y;
+  tr.xG = primGreen.x;
+  tr.yG = primGreen.y;
+  tr.xB = primBlue.x;
+  tr.yB = primBlue.y;
+}
+//####################################################################
+//http://totologic.blogspot.com/2014/01/accurate-point-in-triangle-test.html
+function pointInTriangle(x, y) {
+  var x1; var y1; var x2; var y2; var x3; var y3;
+  x1 = tr.xR, y1 = tr.yR;
+  x2 = tr.xG; y2 = tr.yG;
+  x3 = tr.xB; y3 = tr.yB;
+  var denominator = ((y2 - y3)*(x1 - x3) + (x3 - x2)*(y1 - y3));
+  var a = ((y2 - y3)*(x - x3) + (x3 - x2)*(y - y3)) / denominator;
+  var b = ((y3 - y1)*(x - x3) + (x1 - x3)*(y - y3)) / denominator;
+  var c = 1 - a - b;
+  return 0 <= a && a <= 1 && 0 <= b && b <= 1 && 0 <= c && c <= 1;
+}
+//#############################################################
+function updateRefStimulus() {
+   //update ui
+   document.getElementById("ref_x").value = ref_s.x.toString();
+   document.getElementById("ref_x").defaultValue = ref_s.x.toString();
+   document.getElementById("ref_y").value = ref_s.y.toString();
+   document.getElementById("ref_y").defaultValue = ref_s.y.toString();
+   document.getElementById("ref_Y").value = ref_s.Y.toString();
+   document.getElementById("ref_Y").defaultValue = ref_s.y.toString();
+   document.getElementById("ref_r").value = ref_s.r;
+   document.getElementById("ref_g").value = ref_s.g;
+   document.getElementById("ref_b").value = ref_s.b;
+   //update ref patch
+   if (childIsReady) {
+     cw.ref_p.r = ref_s.r;
+     cw.ref_p.g = ref_s.g;
+     cw.ref_p.b = ref_s.b;
+     cw.drawPatches();
+   }
+}
+//#############################################################
+function updateTestStimulus() {
+   //update ui
+   document.getElementById("test_x").value = test_s.x;
+   document.getElementById("test_y").value = test_s.y;
+   document.getElementById("test_Y").value = test_s.Y;
+   document.getElementById("test_r").value = test_s.r;
+   document.getElementById("test_g").value = test_s.g;
+   document.getElementById("test_b").value = test_s.b;
+   document.getElementById("test_phi").value = test_phi;
+   document.getElementById("test_dr").value = test_dr;
+   //update test patch
+   if (childIsReady) {
+     cw.test_p.r = test_s.r;
+     cw.test_p.g = test_s.g;
+     cw.test_p.b = test_s.b;
+     cw.drawPatches();
+   }
+}
+//#############################################################
+function setup() {
+	//setup Ui
+	cw = window.open('./jnd_child.html', '_blank', 'location=1,status=1,scrollbars=1');	//open child window
+    timerId = window.setInterval(checkChildIsReady(), 20);
+    document.getElementById('observer_wrapper').addEventListener('input', observer_wrapper_inputHandler);
+    document.getElementById('mode_wrapper').addEventListener('input', mode_wrapper_inputHandler);
+    document.getElementById('ref_wrapper').addEventListener('input', ref_wrapper_inputHandler);
+    topY = 300; 
+    //topY = m[2][1]; // max Blue
+    document.getElementById("ref_Y").max = topY;
+    document.getElementById("ref_Y").min = darkY;
+    console.log("Observer=" + observer);
+    if (observer == "1931_2") m = structuredClone(m2);
+    else m = structuredClone(m10);
+    calcInverseMatrix();
+    calc_primary_cie_xyY(primRed);
+    calc_primary_cie_xyY(primGreen);
+    calc_primary_cie_xyY(primBlue);
+    setup_triangle();
+
+    cie_xyY_to_rgb(ref_s);
+    test_s = Object.assign({}, ref_s);
+    updateTestStimulus();
+    updateRefStimulus();
+    test_phi = 0;
+    test_dr = 0;
+    document.getElementById("test_phi").value = 0;
+    document.getElementById("test_dr").value = 0;
+    
+    console.log('primRed xyY='+primRed.x + ';' + primRed.y + ';' + primRed.Y);
+    console.log('primGreen xyY='+primGreen.x + ';' + primGreen.y + ';' + primGreen.Y);
+    console.log('primBlue xyY='+primBlue.x + ';' + primBlue.y + ';' + primBlue.Y);
+}
+//#############################################################
+function KeyCheck(e) {
+   var KeyID = (window.event) ? event.keyCode : e.keyCode;
+	switch(KeyID) {
+		case 100: //Numpad ArrowLeft  dr-
+            if (test_dr >= drStep) {
+              test_dr -= drStep;
+            } else {
+              test_dr = 0.0;
+            }
+            test_dr = parseFloat(test_dr.toFixed(4));
+            temp_s.x = ref_s.x;
+            temp_s.y = ref_s.y;
+            drphi2xy(test_dr, test_phi, temp_s);
+            test_s.x = temp_s.x;
+            test_s.y = temp_s.y;
+            cie_xyY_to_rgb(test_s);
+            updateTestStimulus();
+            document.getElementById("msg").value="";
+            break;
+		case 102: //Numpad ArrowRight   dr+
+            temp_s.x = ref_s.x;
+            temp_s.y = ref_s.y;
+            drphi2xy(test_dr + drStep, test_phi, temp_s);
+            if (pointInTriangle(temp_s.x, temp_s.y)) {
+              test_dr += drStep;
+              test_dr = parseFloat(test_dr.toFixed(4));
+              test_s.x = temp_s.x;
+              test_s.y = temp_s.y;
+              cie_xyY_to_rgb(test_s);
+              updateTestStimulus();
+              document.getElementById("msg").value="";
+            } else {
+               document.getElementById("msg").value="Out of triangle!";
+            }
+            break;
+		case 86: //v    phi+
+            test_phi += phiStep;
+            if (test_phi == 360) test_phi = 0;
+            test_dr = 0.0;
+            test_s = Object.assign({}, ref_s);
+            updateTestStimulus();
+            document.getElementById("msg").value="";
+          break;
+		case  67: //c   phi-
+            test_phi -= phiStep;
+            if (test_phi == -phiStep) test_phi = 360 - phiStep;
+            test_dr = 0.0;
+            test_s = Object.assign({}, ref_s);
+            updateTestStimulus();
+            document.getElementById("msg").value="";
+            break;
+		case 105: //Numpad PgUp
+            if (test_s.Y < topY - 0.1) {
+              test_s.Y += 0.1;
+            } else {
+              test_s.Y = topY;
+            }
+            test_s.Y = parseFloat(test_s.Y.toFixed(1));
+            cie_xyY_to_rgb(test_s);
+            updateTestStimulus();
+            break;
+		case  99: //Numpad PgDn
+            if (test_s.Y >= 0.1) {
+              test_s.Y -= 0.1;
+            } else {
+              test_s.Y = 0.0;
+            }
+            test_s.Y = parseFloat(test_s.Y.toFixed(1));
+            cie_xyY_to_rgb(test_s);
+            updateTestStimulus();
+            break;
+	}
+}
+
+//document.onkeyup = KeyCheck; //no auto repeat
+document.onkeydown = KeyCheck; // auto repeat
+window.onload = setup();
+// - End of JavaScript - -->
+</SCRIPT>
+</HTML>
+
